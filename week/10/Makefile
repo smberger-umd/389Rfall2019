@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-g -fno-stack-protector -fno-pie -fPIC
+CFLAGS=-g -fno-stack-protector -fno-pie -fPIC -std=gnu99
 LDFLAGS=-lcrypto
 OBJECTS=crypto.o common.o
 TARGETS=ledger crack
